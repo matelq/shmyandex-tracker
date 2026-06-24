@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, MouseEvent as ReactMouseEvent, useEffect, useState } from 'react';
 import { api, Card, CardComment, CardHistoryEntry, CardPayload, Status, User } from '../api';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -14,13 +14,49 @@ function fmtDate(iso: string): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString('ru-RU');
 }
 
+// Заглушка «распознавания речи»: ограниченный набор готовых задач.
+// В реальной версии сюда подаётся надиктованный текст, а нейросеть
+// извлекает наименование, описание, статус и ответственного.
+const DICTATION_SAMPLES: { title: string; description: string }[] = [
+  {
+    title: 'Починить экспорт отчётов в CSV',
+    description:
+      'Пользователи жалуются, что выгрузка обрывается на больших объёмах. Воспроизвести проблему, найти причину и починить.',
+  },
+  {
+    title: 'Обновить документацию по API',
+    description:
+      'Актуализировать примеры запросов и описания полей после последних изменений в эндпоинтах.',
+  },
+  {
+    title: 'Добавить тёмную тему интерфейса',
+    description: 'Сверстать палитру для тёмной темы и добавить переключатель в настройках профиля.',
+  },
+  {
+    title: 'Оптимизировать загрузку доски',
+    description:
+      'Доска долго открывается при большом числе задач. Профилировать запросы и добавить пагинацию.',
+  },
+  {
+    title: 'Настроить уведомления о дедлайнах',
+    description: 'Присылать напоминание исполнителю за день до срока по задаче.',
+  },
+];
+
 interface Props {
   card: Card | null;
   defaultStatus?: string;
   statuses: Status[];
   onClose: () => void;
   onSave: (values: CardPayload) => void;
-  onDelete: (card: Card) => void;
+  /** 'modal' — попап (создание), 'panel' — док справа, 'page' — отдельная вкладка */
+  variant?: 'modal' | 'panel' | 'page';
+  /** Открыть текущую задачу в отдельной вкладке (показывается только в панели) */
+  onOpenInNewTab?: () => void;
+  /** Ширина дока (px) для variant="panel" */
+  panelWidth?: number;
+  /** Старт перетягивания левой границы дока */
+  onResizeStart?: (e: ReactMouseEvent) => void;
 }
 
 export default function CardModal({
@@ -29,9 +65,13 @@ export default function CardModal({
   statuses,
   onClose,
   onSave,
-  onDelete,
+  variant = 'modal',
+  onOpenInNewTab,
+  panelWidth = 340,
+  onResizeStart,
 }: Props) {
   const statusLabels = Object.fromEntries(statuses.map((s) => [s.key, s.name]));
+  const archiveStatus = statuses.find((s) => s.isArchive) ?? null;
 
   function fmtValue(field: string | null, value: string | null): string {
     if (value == null || value === '') return '(пусто)';
@@ -63,6 +103,8 @@ export default function CardModal({
 
   const [users, setUsers] = useState<User[]>([]);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [dictating, setDictating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'comments' | 'history'>('comments');
 
   const filteredUsers = users.filter((u) => {
     const q = assignee.trim().toLowerCase();
@@ -140,31 +182,76 @@ export default function CardModal({
     onSave({ title: title.trim(), description, assignee: assignee.trim(), status });
   }
 
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 font-1c"
-      onMouseDown={onClose}
-    >
-      <div
-        className={`w-full ${isEdit ? 'max-w-2xl' : 'max-w-lg'} max-h-[90vh] flex flex-col bg-1c-bg shadow-1c-raised`}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
+  // Заглушка надиктовки: имитируем обработку речи нейросетью и заполняем поля.
+  function handleDictate() {
+    setDictating(true);
+    setError('');
+    setTimeout(() => {
+      const sample = DICTATION_SAMPLES[Math.floor(Math.random() * DICTATION_SAMPLES.length)];
+      setTitle(sample.title);
+      setDescription(sample.description);
+      const normal = statuses.filter((s) => !s.isArchive);
+      if (normal.length) setStatus(normal[Math.floor(Math.random() * normal.length)].key);
+      if (users.length) setAssignee(users[Math.floor(Math.random() * users.length)].name);
+      setDictating(false);
+    }, 900);
+  }
+
+  function handleArchive() {
+    if (!card || !archiveStatus) return;
+    onSave({
+      title: card.title,
+      description: card.description,
+      assignee: card.assignee,
+      status: archiveStatus.key,
+    });
+  }
+
+  const inner = (
+    <>
         {/* Title bar */}
         <div className="titlebar-1c flex items-center justify-between">
-          <span>{isEdit ? `Задача №${card.id} — Редактирование` : 'Задача (создание)'}</span>
-          <button
-            aria-label="Закрыть"
-            onClick={onClose}
-            className="text-white/80 hover:text-white text-sm leading-none"
-          >
-            &#10005;
-          </button>
+          <span className="mono text-1c-xs text-1c-accent font-semibold">
+            {isEdit ? `Задача №${card.id}` : 'Новая задача'}
+          </span>
+          <div className="flex items-center gap-2 text-1c-text-muted">
+            {isEdit && onOpenInNewTab && variant === 'panel' && (
+              <button
+                aria-label="Открыть в новой вкладке"
+                title="Открыть в новой вкладке"
+                onClick={onOpenInNewTab}
+                className="hover:text-1c-text leading-none"
+              >
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+                  <path d="M6 2h8v8M14 2L7 9" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M11 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            {variant !== 'page' && (
+              <button
+                aria-label="Закрыть"
+                onClick={onClose}
+                className="hover:text-1c-text text-sm leading-none"
+              >
+                &#10005;
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Toolbar */}
-        <div className="bg-1c-toolbar-bg border-b border-1c-border-light px-1 py-1 flex items-center gap-0.5">
+        <div className="bg-1c-toolbar-bg border-b border-1c-border-light px-1 py-1 flex items-center gap-0.5 flex-wrap">
+          <button
+            type="button"
+            onClick={handleDictate}
+            disabled={dictating}
+            title="Надиктовать задачу голосом — нейросеть заполнит поля (демо)"
+            className="btn-1c flex items-center gap-1 disabled:opacity-60"
+          >
+            &#127908; {dictating ? 'Распознаю…' : 'Надиктовать'}
+          </button>
+          <div className="toolbar-separator" />
           <button type="button" onClick={handleSubmit as any} className="btn-1c flex items-center gap-1">
             &#128190; Записать
           </button>
@@ -175,15 +262,15 @@ export default function CardModal({
           >
             &#9989; Записать и закрыть
           </button>
-          {isEdit && (
+          {isEdit && archiveStatus && card.status !== archiveStatus.key && (
             <>
               <div className="toolbar-separator" />
               <button
                 type="button"
-                onClick={() => onDelete(card)}
-                className="btn-1c flex items-center gap-1 text-1c-danger"
+                onClick={handleArchive}
+                className="btn-1c flex items-center gap-1"
               >
-                &#128465; Пометить на удаление
+                &#128451; Переместить в архив
               </button>
             </>
           )}
@@ -324,74 +411,95 @@ export default function CardModal({
           </form>
 
           {isEdit && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* История изменений */}
-              <section className="panel-1c p-2">
-                <h3 className="font-bold text-1c-sm text-1c-text mb-2 flex items-center gap-1">
-                  &#128220; История изменений
-                </h3>
-                {history.length === 0 ? (
-                  <p className="text-1c-xs text-1c-text-muted">Изменений пока нет.</p>
-                ) : (
-                  <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                    {history.map((h) => (
-                      <li key={h.id} className="text-1c-xs text-1c-text-secondary leading-snug">
-                        <span className="font-semibold text-1c-text">{h.userName}</span>{' '}
-                        {describeHistory(h)}
-                        <div className="text-1c-text-muted">{fmtDate(h.createdAt)}</div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              {/* Комментарии */}
-              <section className="panel-1c p-2 flex flex-col">
-                <h3 className="font-bold text-1c-sm text-1c-text mb-2 flex items-center gap-1">
+            <div className="mt-4">
+              {/* Переключатель вкладок */}
+              <div className="flex gap-1 border-b border-1c-border-light mb-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('comments')}
+                  className={`px-3 py-1.5 text-1c-sm -mb-px border-b-2 ${
+                    activeTab === 'comments'
+                      ? 'border-1c-accent text-1c-text font-semibold'
+                      : 'border-transparent text-1c-text-muted hover:text-1c-text'
+                  }`}
+                >
                   &#128172; Комментарии ({comments.length})
-                </h3>
-                {comments.length === 0 ? (
-                  <p className="text-1c-xs text-1c-text-muted mb-2">
-                    Комментариев пока нет. Будьте первым!
-                  </p>
-                ) : (
-                  <ul className="space-y-2 max-h-40 overflow-y-auto pr-1 mb-2">
-                    {comments.map((c) => (
-                      <li key={c.id} className="text-1c-xs leading-snug">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="font-semibold text-1c-text">{c.userName}</span>
-                          <span className="text-1c-text-muted whitespace-nowrap">
-                            {fmtDate(c.createdAt)}
-                          </span>
-                        </div>
-                        <div className="text-1c-text-secondary whitespace-pre-wrap break-words">
-                          {c.body}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`px-3 py-1.5 text-1c-sm -mb-px border-b-2 ${
+                    activeTab === 'history'
+                      ? 'border-1c-accent text-1c-text font-semibold'
+                      : 'border-transparent text-1c-text-muted hover:text-1c-text'
+                  }`}
+                >
+                  &#128220; История ({history.length})
+                </button>
+              </div>
 
-                <form onSubmit={handleAddComment} className="mt-auto flex flex-col gap-1">
-                  <textarea
-                    value={commentBody}
-                    onChange={(e) => setCommentBody(e.target.value)}
-                    rows={2}
-                    className="input-1c w-full resize-none"
-                    placeholder="Добавить комментарий..."
-                  />
-                  <button
-                    type="submit"
-                    disabled={submittingComment || !commentBody.trim()}
-                    className="btn-1c self-end disabled:opacity-50"
-                  >
-                    Отправить
-                  </button>
-                </form>
-              </section>
+              {/* Содержимое вкладки */}
+              {activeTab === 'comments' ? (
+                <section className="flex flex-col">
+                  {comments.length === 0 ? (
+                    <p className="text-1c-xs text-1c-text-muted mb-2">
+                      Комментариев пока нет. Будьте первым!
+                    </p>
+                  ) : (
+                    <ul className="space-y-2 max-h-52 overflow-y-auto pr-1 mb-2">
+                      {comments.map((c) => (
+                        <li key={c.id} className="text-1c-xs leading-snug">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="font-semibold text-1c-text">{c.userName}</span>
+                            <span className="text-1c-text-muted whitespace-nowrap">
+                              {fmtDate(c.createdAt)}
+                            </span>
+                          </div>
+                          <div className="text-1c-text-secondary whitespace-pre-wrap break-words">
+                            {c.body}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <form onSubmit={handleAddComment} className="mt-auto flex flex-col gap-1">
+                    <textarea
+                      value={commentBody}
+                      onChange={(e) => setCommentBody(e.target.value)}
+                      rows={2}
+                      className="input-1c w-full resize-none"
+                      placeholder="Добавить комментарий..."
+                    />
+                    <button
+                      type="submit"
+                      disabled={submittingComment || !commentBody.trim()}
+                      className="btn-1c self-end disabled:opacity-50"
+                    >
+                      Отправить
+                    </button>
+                  </form>
+                </section>
+              ) : (
+                <section>
+                  {history.length === 0 ? (
+                    <p className="text-1c-xs text-1c-text-muted">Изменений пока нет.</p>
+                  ) : (
+                    <ul className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                      {history.map((h) => (
+                        <li key={h.id} className="text-1c-xs text-1c-text-secondary leading-snug">
+                          <span className="font-semibold text-1c-text">{h.userName}</span>{' '}
+                          {describeHistory(h)}
+                          <div className="text-1c-text-muted">{fmtDate(h.createdAt)}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              )}
 
               {activityError && (
-                <div className="md:col-span-2 p-1.5 bg-[#FFF0F0] border border-1c-danger text-1c-danger text-1c-sm">
+                <div className="mt-2 p-1.5 bg-[#FFF0F0] border border-1c-danger text-1c-danger text-1c-sm">
                   &#9888; {activityError}
                 </div>
               )}
@@ -403,6 +511,48 @@ export default function CardModal({
         <div className="bg-1c-status-bar border-t border-1c-border px-2 py-0.5 text-1c-xs text-1c-text-muted">
           {isEdit ? `Объект: Задача №${card.id}` : 'Новый объект'}
         </div>
+    </>
+  );
+
+  if (variant === 'panel') {
+    return (
+      <aside
+        className="font-1c h-full flex-shrink-0 flex flex-col bg-1c-surface border-l border-1c-border overflow-hidden relative"
+        style={{ width: panelWidth }}
+      >
+        {/* Ручка изменения ширины */}
+        <div
+          onMouseDown={onResizeStart}
+          className="absolute left-0 top-0 h-full w-1.5 -ml-0.5 cursor-col-resize hover:bg-1c-accent/30 z-10"
+          title="Потяните, чтобы изменить ширину"
+        />
+        {inner}
+      </aside>
+    );
+  }
+
+  if (variant === 'page') {
+    return (
+      <div className="font-1c min-h-full bg-1c-bg py-6 px-4 flex justify-center">
+        <div className="w-full max-w-3xl flex flex-col bg-1c-surface border border-1c-border-light rounded-lg shadow-1c-etched overflow-hidden">
+          {inner}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50 font-1c"
+      onMouseDown={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[90vh] flex flex-col bg-1c-surface rounded-lg shadow-1c-raised overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {inner}
       </div>
     </div>
   );

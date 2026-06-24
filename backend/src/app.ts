@@ -11,6 +11,7 @@ import './types.js';
 import authRoutes from './routes/auth.js';
 import cardRoutes from './routes/cards.js';
 import statusRoutes from './routes/statuses.js';
+import boardRoutes from './routes/boards.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,11 +40,20 @@ export async function buildApp(
     try {
       await request.jwtVerify();
     } catch {
-      reply.code(401).send({ error: 'Требуется авторизация' });
+      return reply.code(401).send({ error: 'Требуется авторизация' });
+    }
+    // Заблокированный (или удалённый) пользователь не может вызывать API,
+    // даже имея на руках действующий токен.
+    const row = db
+      .prepare('SELECT blocked FROM users WHERE id = ?')
+      .get(request.user.id) as { blocked: number } | undefined;
+    if (!row || row.blocked) {
+      return reply.code(403).send({ error: 'Учётная запись заблокирована' });
     }
   });
 
   await fastify.register(authRoutes, { db });
+  await fastify.register(boardRoutes, { db });
   await fastify.register(cardRoutes, { db });
   await fastify.register(statusRoutes, { db });
 

@@ -3,7 +3,9 @@ import Database from 'better-sqlite3';
 
 interface CardRow {
   id: number;
+  board_id: number;
   user_id: number;
+  author_name: string | null;
   title: string;
   description: string;
   assignee: string;
@@ -18,6 +20,7 @@ interface CreateCardBody {
   description?: string;
   assignee?: string;
   status?: string;
+  boardId?: number;
 }
 
 interface UpdateCardBody extends CreateCardBody {
@@ -44,9 +47,11 @@ interface CommentRow {
 function serialize(row: CardRow) {
   return {
     id: row.id,
+    boardId: row.board_id,
     title: row.title,
     description: row.description,
     assignee: row.assignee,
+    author: row.author_name ?? '',
     status: row.status,
     position: row.position,
     createdAt: row.created_at,
@@ -91,8 +96,16 @@ export default async function cardRoutes(
   const { db } = opts;
   fastify.addHook('onRequest', fastify.authenticate);
 
-  const statusExists = (key: string): boolean =>
-    !!db.prepare('SELECT 1 FROM statuses WHERE key = ?').get(key);
+  // Карточки всегда читаем с именем автора (для отображения на фронте).
+  const CARD_SELECT = `SELECT c.*, u.name AS author_name
+                         FROM cards c
+                         LEFT JOIN users u ON u.id = c.user_id`;
+  const getCard = (id: number) =>
+    db.prepare(`${CARD_SELECT} WHERE c.id = ?`).get(id) as CardRow | undefined;
+
+  // Статус должен принадлежать той же доске, что и карточка.
+  const statusInBoard = (key: string, boardId: number): boolean =>
+    !!db.prepare('SELECT 1 FROM statuses WHERE key = ? AND board_id = ?').get(key, boardId);
 
   // Ответственный — либо не назначен (пусто), либо имя существующего пользователя.
   const assigneeValid = (name: string): boolean =>
@@ -125,50 +138,84 @@ export default async function cardRoutes(
     }
   }
 
-  // Доска общая: любой авторизованный пользователь видит все карточки.
-  fastify.get('/api/cards', async () => {
+  // Доска общая: любой авторизованный пользователь видит все карточки доски.
+  fastify.get<{ Querystring: { boardId?: string } }>('/api/cards', async (request, reply) => {
+    const boardId = Number(request.query.boardId);
+    if (!boardId) {
+      return reply.code(400).send({ error: 'Не указана доска (boardId)' });
+    }
     const rows = db
-      .prepare('SELECT * FROM cards ORDER BY status, position, id')
-      .all() as CardRow[];
+      .prepare(`${CARD_SELECT} WHERE c.board_id = ? ORDER BY c.status, c.position, c.id`)
+      .all(boardId) as CardRow[];
     return rows.map(serialize);
   });
 
+  // Поиск по названию по всем доскам. Фильтрация в JS — регистронезависимо
+  // в т.ч. для кириллицы (SQLite LIKE регистронезависим только для латиницы).
+  // Возвращаем имя статуса, флаг архива и имя доски — для группировки на клиенте.
+  // Ранжирование (текущая доска и совпадения с начала) выполняется на клиенте.
+  const SEARCH_SELECT = `SELECT c.*, u.name AS author_name,
+                                s.name AS status_name, s.is_archive AS status_is_archive,
+                                b.name AS board_name
+                           FROM cards c
+                           LEFT JOIN users u ON u.id = c.user_id
+                           LEFT JOIN statuses s ON s.board_id = c.board_id AND s.key = c.status
+                           LEFT JOIN boards b ON b.id = c.board_id`;
+  fastify.get<{ Querystring: { q?: string } }>('/api/cards/search', async (request) => {
+    const q = (request.query.q ?? '').trim().toLowerCase();
+    if (!q) return [];
+    const rows = db.prepare(SEARCH_SELECT).all() as (CardRow & {
+      status_name: string | null;
+      status_is_archive: number | null;
+      board_name: string | null;
+    })[];
+    return rows
+      .filter((r) => r.title.toLowerCase().includes(q))
+      .slice(0, 100)
+      .map((r) => ({
+        ...serialize(r),
+        statusName: r.status_name ?? r.status,
+        archived: !!r.status_is_archive,
+        boardName: r.board_name ?? '',
+      }));
+  });
+
   fastify.post<{ Body: CreateCardBody }>('/api/cards', async (request, reply) => {
-    const { title, description = '', assignee = '', status = 'todo' } = request.body;
+    const { title, description = '', assignee = '', status, boardId } = request.body;
     if (!title?.trim()) {
       return reply.code(400).send({ error: 'Заголовок карточки обязателен' });
     }
-    if (!statusExists(status)) {
-      return reply.code(400).send({ error: 'Недопустимый статус' });
+    if (!boardId || !db.prepare('SELECT 1 FROM boards WHERE id = ?').get(boardId)) {
+      return reply.code(400).send({ error: 'Доска не найдена' });
+    }
+    if (!status || !statusInBoard(status, boardId)) {
+      return reply.code(400).send({ error: 'Недопустимый статус для этой доски' });
     }
     if (!assigneeValid(assignee)) {
       return reply.code(400).send({ error: 'Ответственный должен быть существующим пользователем' });
     }
 
     const max = db
-      .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM cards WHERE status = ?')
-      .get(status) as { m: number };
+      .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM cards WHERE board_id = ? AND status = ?')
+      .get(boardId, status) as { m: number };
 
     // user_id сохраняем как автора карточки, но доступ к ней есть у всех.
     const info = db
       .prepare(
-        'INSERT INTO cards (user_id, title, description, assignee, status, position) VALUES (?, ?, ?, ?, ?, ?)'
+        'INSERT INTO cards (board_id, user_id, title, description, assignee, status, position) VALUES (?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(request.user.id, title.trim(), description, assignee, status, max.m + 1);
+      .run(boardId, request.user.id, title.trim(), description, assignee, status, max.m + 1);
 
     logCreated(Number(info.lastInsertRowid), request.user);
 
-    const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(info.lastInsertRowid) as CardRow;
-    return reply.code(201).send(serialize(row));
+    return reply.code(201).send(serialize(getCard(Number(info.lastInsertRowid))!));
   });
 
   fastify.put<{ Params: { id: string }; Body: UpdateCardBody }>(
     '/api/cards/:id',
     async (request, reply) => {
       const id = Number(request.params.id);
-      const existing = db
-        .prepare('SELECT * FROM cards WHERE id = ?')
-        .get(id) as CardRow | undefined;
+      const existing = getCard(id);
       if (!existing) {
         return reply.code(404).send({ error: 'Карточка не найдена' });
       }
@@ -181,8 +228,8 @@ export default async function cardRoutes(
         position = existing.position,
       } = request.body;
 
-      if (!statusExists(status)) {
-        return reply.code(400).send({ error: 'Недопустимый статус' });
+      if (!statusInBoard(status, existing.board_id)) {
+        return reply.code(400).send({ error: 'Недопустимый статус для этой доски' });
       }
       if (!title?.trim()) {
         return reply.code(400).send({ error: 'Заголовок карточки обязателен' });
@@ -201,8 +248,7 @@ export default async function cardRoutes(
          WHERE id = ?`
       ).run(title.trim(), description, assignee, status, position, id);
 
-      const row = db.prepare('SELECT * FROM cards WHERE id = ?').get(id) as CardRow;
-      return serialize(row);
+      return serialize(getCard(id)!);
     }
   );
 

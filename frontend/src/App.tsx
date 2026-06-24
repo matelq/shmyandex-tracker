@@ -1,6 +1,7 @@
 import { useAuth } from "./context/AuthContext";
 import AuthPage from "./components/AuthPage";
 import Board from "./components/Board";
+import TaskPage from "./components/TaskPage";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -13,5 +14,15 @@ export default function App() {
     );
   }
 
-  return user ? <Board /> : <AuthPage />;
+  if (!user) return <AuthPage />;
+
+  // Отдельная вкладка задачи: /?task=<id>&board=<boardId>
+  const params = new URLSearchParams(window.location.search);
+  const taskId = Number(params.get("task"));
+  const taskBoard = Number(params.get("board"));
+  if (taskId && taskBoard) {
+    return <TaskPage taskId={taskId} boardId={taskBoard} />;
+  }
+
+  return <Board />;
 }

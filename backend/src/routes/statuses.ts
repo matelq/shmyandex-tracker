@@ -28,46 +28,80 @@ export default async function statusRoutes(
   const { db } = opts;
   fastify.addHook('onRequest', fastify.authenticate);
 
-  const listQuery = db.prepare(
+  // Статусы независимы для каждой доски — всё работает в разрезе board_id.
+  const listByBoard = db.prepare(
     `SELECT s.*, (SELECT COUNT(*) FROM cards c WHERE c.status = s.key) AS card_count
        FROM statuses s
+      WHERE s.board_id = ?
       ORDER BY s.is_archive, s.position, s.id`
   );
+  const serializeList = (boardId: number) =>
+    (listByBoard.all(boardId) as StatusRow[]).map(serialize);
 
   const getById = (id: number) =>
     db.prepare('SELECT * FROM statuses WHERE id = ?').get(id) as
-      | (StatusRow & { is_archive: number })
+      | (StatusRow & { is_archive: number; board_id: number })
       | undefined;
 
-  fastify.get('/api/statuses', async () => {
-    return (listQuery.all() as StatusRow[]).map(serialize);
-  });
-
-  fastify.post<{ Body: { name?: string } }>('/api/statuses', async (request, reply) => {
-    const name = request.body.name?.trim();
-    if (!name) {
-      return reply.code(400).send({ error: 'Название статуса обязательно' });
+  fastify.get<{ Querystring: { boardId?: string } }>('/api/statuses', async (request, reply) => {
+    const boardId = Number(request.query.boardId);
+    if (!boardId) {
+      return reply.code(400).send({ error: 'Не указана доска (boardId)' });
     }
-
-    // Новый статус встаёт после последнего обычного, перед «Архивом».
-    const maxPos = db
-      .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM statuses WHERE is_archive = 0')
-      .get() as { m: number };
-
-    const create = db.transaction((statusName: string) => {
-      const info = db
-        .prepare('INSERT INTO statuses (key, name, position, is_archive) VALUES (?, ?, ?, 0)')
-        .run('', statusName, maxPos.m + 1);
-      const id = Number(info.lastInsertRowid);
-      const key = `st${id}`;
-      db.prepare('UPDATE statuses SET key = ? WHERE id = ?').run(key, id);
-      return id;
-    });
-
-    const id = create(name);
-    const row = listQuery.all().find((r: any) => r.id === id) as StatusRow;
-    return reply.code(201).send(serialize(row));
+    return serializeList(boardId);
   });
+
+  // Переупорядочивание статусов в рамках доски: position по порядку переданных id.
+  // «Архив» в переупорядочивании не участвует (всегда в конце).
+  fastify.post<{ Body: { boardId?: number; orderedIds?: number[] } }>(
+    '/api/statuses/reorder',
+    async (request, reply) => {
+      const { boardId, orderedIds: ids } = request.body;
+      if (!boardId || !Array.isArray(ids) || ids.length === 0) {
+        return reply.code(400).send({ error: 'Ожидается boardId и непустой массив orderedIds' });
+      }
+      const reorder = db.transaction(() => {
+        const upd = db.prepare(
+          'UPDATE statuses SET position = ? WHERE id = ? AND board_id = ? AND is_archive = 0'
+        );
+        ids.forEach((id, i) => upd.run(i + 1, id, boardId));
+      });
+      reorder();
+      return serializeList(boardId);
+    }
+  );
+
+  fastify.post<{ Body: { name?: string; boardId?: number } }>(
+    '/api/statuses',
+    async (request, reply) => {
+      const name = request.body.name?.trim();
+      const boardId = request.body.boardId;
+      if (!name) {
+        return reply.code(400).send({ error: 'Название статуса обязательно' });
+      }
+      if (!boardId || !db.prepare('SELECT 1 FROM boards WHERE id = ?').get(boardId)) {
+        return reply.code(400).send({ error: 'Доска не найдена' });
+      }
+
+      // Новый статус встаёт после последнего обычного, перед «Архивом».
+      const maxPos = db
+        .prepare('SELECT COALESCE(MAX(position), 0) AS m FROM statuses WHERE board_id = ? AND is_archive = 0')
+        .get(boardId) as { m: number };
+
+      const create = db.transaction((statusName: string) => {
+        const info = db
+          .prepare('INSERT INTO statuses (board_id, key, name, position, is_archive) VALUES (?, ?, ?, ?, 0)')
+          .run(boardId, '', statusName, maxPos.m + 1);
+        const id = Number(info.lastInsertRowid);
+        db.prepare('UPDATE statuses SET key = ? WHERE id = ?').run(`st${id}`, id);
+        return id;
+      });
+
+      const id = create(name);
+      const row = serializeList(boardId).find((r) => r.id === id)!;
+      return reply.code(201).send(row);
+    }
+  );
 
   fastify.put<{ Params: { id: string }; Body: { name?: string } }>(
     '/api/statuses/:id',
@@ -85,8 +119,8 @@ export default async function statusRoutes(
         return reply.code(400).send({ error: 'Название статуса обязательно' });
       }
       db.prepare('UPDATE statuses SET name = ? WHERE id = ?').run(name, id);
-      const row = listQuery.all().find((r: any) => r.id === id) as StatusRow;
-      return serialize(row);
+      const row = serializeList(existing.board_id).find((r) => r.id === id)!;
+      return row;
     }
   );
 
@@ -119,11 +153,11 @@ export default async function statusRoutes(
         if (reassignTo === existing.key) {
           return reply.code(400).send({ error: 'Нельзя переместить задачи в удаляемый статус' });
         }
-        const target = db.prepare('SELECT key FROM statuses WHERE key = ?').get(reassignTo) as
-          | { key: string }
-          | undefined;
+        const target = db
+          .prepare('SELECT key FROM statuses WHERE key = ? AND board_id = ?')
+          .get(reassignTo, existing.board_id) as { key: string } | undefined;
         if (!target) {
-          return reply.code(400).send({ error: 'Целевой статус не найден' });
+          return reply.code(400).send({ error: 'Целевой статус не найден на этой доске' });
         }
 
         const move = db.transaction(() => {

@@ -2,13 +2,16 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  blocked?: boolean;
 }
 
 export interface Card {
   id: number;
+  boardId: number;
   title: string;
   description: string;
   assignee: string;
+  author: string;
   status: string;
   position: number;
   createdAt: string;
@@ -21,6 +24,19 @@ export interface CardPayload {
   assignee?: string;
   status?: string;
   position?: number;
+  boardId?: number;
+}
+
+export interface Board {
+  id: number;
+  name: string;
+  position: number;
+}
+
+export interface SearchCard extends Card {
+  statusName: string;
+  archived: boolean;
+  boardName: string;
 }
 
 export interface CardHistoryEntry {
@@ -92,11 +108,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  register: (payload: { email: string; name: string; password: string }) =>
-    request<{ token: string; user: User }>('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    }),
   login: (payload: { email: string; password: string }) =>
     request<{ token: string; user: User }>('/api/auth/login', {
       method: 'POST',
@@ -104,17 +115,33 @@ export const api = {
     }),
   me: () => request<{ user: User }>('/api/auth/me'),
   listUsers: () => request<User[]>('/api/users'),
+  createUser: (payload: { email: string; name: string; password: string }) =>
+    request<User>('/api/users', { method: 'POST', body: JSON.stringify(payload) }),
+  blockUser: (id: number, blocked: boolean) =>
+    request<User>(`/api/users/${id}/block`, {
+      method: 'POST',
+      body: JSON.stringify({ blocked }),
+    }),
 
-  listCards: () => request<Card[]>('/api/cards'),
+  listCards: (boardId: number) => request<Card[]>(`/api/cards?boardId=${boardId}`),
+  searchCards: (q: string) =>
+    request<SearchCard[]>(`/api/cards/search?q=${encodeURIComponent(q)}`),
   createCard: (payload: CardPayload) =>
     request<Card>('/api/cards', { method: 'POST', body: JSON.stringify(payload) }),
   updateCard: (id: number, payload: CardPayload) =>
     request<Card>(`/api/cards/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteCard: (id: number) => request<null>(`/api/cards/${id}`, { method: 'DELETE' }),
 
-  listStatuses: () => request<Status[]>('/api/statuses'),
-  createStatus: (name: string) =>
-    request<Status>('/api/statuses', { method: 'POST', body: JSON.stringify({ name }) }),
+  listBoards: () => request<Board[]>('/api/boards'),
+  createBoard: (name: string) =>
+    request<Board>('/api/boards', { method: 'POST', body: JSON.stringify({ name }) }),
+  updateBoard: (id: number, name: string) =>
+    request<Board>(`/api/boards/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  deleteBoard: (id: number) => request<null>(`/api/boards/${id}`, { method: 'DELETE' }),
+
+  listStatuses: (boardId: number) => request<Status[]>(`/api/statuses?boardId=${boardId}`),
+  createStatus: (name: string, boardId: number) =>
+    request<Status>('/api/statuses', { method: 'POST', body: JSON.stringify({ name, boardId }) }),
   updateStatus: (id: number, name: string) =>
     request<Status>(`/api/statuses/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
   deleteStatus: (id: number, reassignTo?: string) =>
@@ -122,6 +149,11 @@ export const api = {
       `/api/statuses/${id}${reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : ''}`,
       { method: 'DELETE' }
     ),
+  reorderStatuses: (boardId: number, orderedIds: number[]) =>
+    request<Status[]>('/api/statuses/reorder', {
+      method: 'POST',
+      body: JSON.stringify({ boardId, orderedIds }),
+    }),
 
   listHistory: (id: number) => request<CardHistoryEntry[]>(`/api/cards/${id}/history`),
   listComments: (id: number) => request<CardComment[]>(`/api/cards/${id}/comments`),

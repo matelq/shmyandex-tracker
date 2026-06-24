@@ -1,13 +1,9 @@
 import { FormEvent, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
-type Mode = "login" | "register";
-
 export default function AuthPage() {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<Mode>("login");
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -17,11 +13,7 @@ export default function AuthPage() {
     setError("");
     setBusy(true);
     try {
-      if (mode === "login") {
-        await login(email, password);
-      } else {
-        await register(email, name, password);
-      }
+      await login(email, password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
@@ -36,11 +28,7 @@ export default function AuthPage() {
         {/* Title bar */}
         <div className="titlebar-1c flex items-center gap-2">
           <span className="text-sm">&#128274;</span>
-          <span>
-            {mode === "login"
-              ? "Шмяндекс трекер — Авторизация"
-              : "Шмяндекс трекер — Регистрация"}
-          </span>
+          <span>Шмяндекс трекер — Авторизация</span>
         </div>
 
         {/* Form body */}
@@ -48,23 +36,6 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit}>
             <table className="w-full text-1c-base">
               <tbody>
-                {mode === "register" && (
-                  <tr>
-                    <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">
-                      Имя:
-                    </td>
-                    <td className="py-1.5">
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        className="input-1c w-full"
-                        placeholder="Иванов И.И."
-                      />
-                    </td>
-                  </tr>
-                )}
                 <tr>
                   <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">
                     Пользователь:
@@ -104,25 +75,9 @@ export default function AuthPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between mt-4 pt-3 border-t border-1c-border-light">
-              <button
-                type="button"
-                onClick={() => {
-                  setMode(mode === "login" ? "register" : "login");
-                  setError("");
-                }}
-                className="text-1c-link text-1c-sm underline hover:no-underline cursor-pointer bg-transparent border-none"
-              >
-                {mode === "login"
-                  ? "Регистрация нового пользователя"
-                  : "Уже есть учётная запись"}
-              </button>
+            <div className="flex items-center justify-end mt-4 pt-3 border-t border-1c-border-light">
               <button type="submit" disabled={busy} className="btn-1c-primary">
-                {busy
-                  ? "Подождите..."
-                  : mode === "login"
-                    ? "Войти"
-                    : "Зарегистрировать"}
+                {busy ? "Подождите..." : "Войти"}
               </button>
             </div>
           </form>
@@ -131,7 +86,7 @@ export default function AuthPage() {
         {/* Status bar */}
         <div className="bg-1c-status-bar border-t border-1c-border-light px-2 py-0.5 text-1c-xs text-1c-text-muted flex justify-between">
           <span>Информационная база: Shmyandex Tracker</span>
-          <span>{mode === "login" ? "Вход в систему" : "Регистрация"}</span>
+          <span>Вход в систему</span>
         </div>
       </div>
     </div>

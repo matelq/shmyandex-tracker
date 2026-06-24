@@ -16,11 +16,20 @@ export function createSchema(db: Database.Database): void {
       email         TEXT NOT NULL UNIQUE,
       name          TEXT NOT NULL,
       password_hash TEXT NOT NULL,
+      blocked       INTEGER NOT NULL DEFAULT 0,
       created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS boards (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT NOT NULL,
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS cards (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      board_id    INTEGER REFERENCES boards(id) ON DELETE CASCADE,
       user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       title       TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
@@ -60,6 +69,7 @@ export function createSchema(db: Database.Database): void {
 
     CREATE TABLE IF NOT EXISTS statuses (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      board_id   INTEGER REFERENCES boards(id) ON DELETE CASCADE,
       key        TEXT NOT NULL UNIQUE,
       name       TEXT NOT NULL,
       position   INTEGER NOT NULL DEFAULT 0,
@@ -68,26 +78,69 @@ export function createSchema(db: Database.Database): void {
     );
   `);
 
-  seedStatuses(db);
+  migrate(db);
+  ensureDefaults(db);
 }
 
-// Спецстатус «Архив» всегда существует и неизменяем.
+const DEFAULT_BOARD_ID = 1;
+
+// Идемпотентные миграции для уже существующих БД.
+function migrate(db: Database.Database): void {
+  const userCols = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+  if (!userCols.some((c) => c.name === 'blocked')) {
+    db.exec('ALTER TABLE users ADD COLUMN blocked INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // Доска по умолчанию должна существовать до бэкфилла board_id.
+  const boardCount = db.prepare('SELECT COUNT(*) AS c FROM boards').get() as { c: number };
+  if (boardCount.c === 0) {
+    db.prepare('INSERT INTO boards (name, position) VALUES (?, ?)').run('Основная', 1);
+  }
+
+  const cardCols = db.prepare('PRAGMA table_info(cards)').all() as { name: string }[];
+  if (!cardCols.some((c) => c.name === 'board_id')) {
+    db.exec('ALTER TABLE cards ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE');
+  }
+  db.prepare('UPDATE cards SET board_id = ? WHERE board_id IS NULL').run(DEFAULT_BOARD_ID);
+
+  const statusCols = db.prepare('PRAGMA table_info(statuses)').all() as { name: string }[];
+  if (statusCols.length > 0 && !statusCols.some((c) => c.name === 'board_id')) {
+    db.exec('ALTER TABLE statuses ADD COLUMN board_id INTEGER REFERENCES boards(id) ON DELETE CASCADE');
+  }
+  db.prepare('UPDATE statuses SET board_id = ? WHERE board_id IS NULL').run(DEFAULT_BOARD_ID);
+
+  // Индексы по board_id создаём после того, как колонки гарантированно есть.
+  db.exec('CREATE INDEX IF NOT EXISTS idx_cards_board ON cards(board_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_statuses_board ON statuses(board_id)');
+}
+
+// Спецстатус «Архив» всегда существует и неизменяем (определяется по is_archive).
 export const ARCHIVE_KEY = 'archive';
 
-// Идемпотентно создаёт стартовый набор статусов, если их ещё нет.
-// Все статусы (включая изначальные) — обычные редактируемые записи,
-// кроме «Архива» (is_archive = 1).
-function seedStatuses(db: Database.Database): void {
-  const count = db.prepare('SELECT COUNT(*) AS c FROM statuses').get() as { c: number };
-  if (count.c > 0) return;
-
+// Создаёт стартовый набор статусов для доски.
+// canonical=true — ключи без префикса (todo/in_progress/done/archive) для доски
+// по умолчанию; иначе ключи с префиксом доски, чтобы оставаться уникальными.
+export function seedBoardStatuses(
+  db: Database.Database,
+  boardId: number,
+  canonical = false
+): void {
+  const k = (s: string) => (canonical ? s : `b${boardId}_${s}`);
   const insert = db.prepare(
-    'INSERT INTO statuses (key, name, position, is_archive) VALUES (?, ?, ?, ?)'
+    'INSERT INTO statuses (board_id, key, name, position, is_archive) VALUES (?, ?, ?, ?, ?)'
   );
-  insert.run('todo', 'К выполнению', 1, 0);
-  insert.run('in_progress', 'В работе', 2, 0);
-  insert.run('done', 'Выполнено', 3, 0);
-  insert.run(ARCHIVE_KEY, 'Архив', 1000, 1);
+  insert.run(boardId, k('todo'), 'К выполнению', 1, 0);
+  insert.run(boardId, k('in_progress'), 'В работе', 2, 0);
+  insert.run(boardId, k('done'), 'Выполнено', 3, 0);
+  insert.run(boardId, k(ARCHIVE_KEY), 'Архив', 1000, 1);
+}
+
+// Сидинг статусов доски по умолчанию (только на свежей БД).
+function ensureDefaults(db: Database.Database): void {
+  const count = db.prepare('SELECT COUNT(*) AS c FROM statuses').get() as { c: number };
+  if (count.c === 0) {
+    seedBoardStatuses(db, DEFAULT_BOARD_ID, true);
+  }
 }
 
 export function seed(db: Database.Database): void {
@@ -102,7 +155,7 @@ export function seed(db: Database.Database): void {
   const userId = Number(lastInsertRowid);
 
   const insert = db.prepare(
-    'INSERT INTO cards (user_id, title, description, status, position) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO cards (board_id, user_id, title, description, status, position) VALUES (1, ?, ?, ?, ?, ?)'
   );
 
   insert.run(userId, 'Изучить документацию', 'Прочитать README и ознакомиться с API', 'todo', 1);

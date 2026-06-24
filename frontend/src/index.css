@@ -10,133 +10,152 @@ body,
 
 body {
   margin: 0;
-  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   font-size: 13px;
-  -webkit-font-smoothing: auto;
-  background-color: #D4D0C8;
-  color: #000000;
+  -webkit-font-smoothing: antialiased;
+  background-color: #f6f7f8;
+  color: #1b1c20;
 }
 
-/* 1C-style raised button */
+/* Monospace helper (метки, идентификаторы, даты) */
+.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-feature-settings: 'tnum';
+}
+
+/* Neutral button */
 .btn-1c {
-  background-color: #D4D0C8;
-  border: none;
-  padding: 2px 12px;
-  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  background-color: #ffffff;
+  border: 1px solid #e6e7ea;
+  border-radius: 6px;
+  padding: 4px 11px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   font-size: 12px;
+  font-weight: 500;
+  color: #52555c;
   cursor: pointer;
-  box-shadow: inset 1px 1px 0 #FFFFFF, inset -1px -1px 0 #808080, inset 2px 2px 0 #D4D0C8, inset -2px -2px 0 #404040;
-  min-height: 24px;
+  min-height: 28px;
+  transition: background-color .12s, border-color .12s;
 }
 
 .btn-1c:hover {
-  background-color: #E0DDD5;
+  background-color: #f3f4f6;
+  border-color: #d7d9de;
 }
 
 .btn-1c:active {
-  box-shadow: inset -1px -1px 0 #FFFFFF, inset 1px 1px 0 #808080, inset -2px -2px 0 #D4D0C8, inset 2px 2px 0 #404040;
-  padding: 3px 11px 1px 13px;
+  background-color: #eceef0;
 }
 
 .btn-1c:disabled {
-  color: #808080;
+  color: #b0b4bc;
   cursor: default;
-  text-shadow: 1px 1px 0 #FFFFFF;
+  background-color: #fafafb;
 }
 
-/* 1C-style blue accent button */
+/* Indigo accent button */
 .btn-1c-primary {
-  background-color: #003399;
-  color: #FFFFFF;
-  border: none;
-  padding: 3px 16px;
-  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  background-color: #4f5bd5;
+  color: #ffffff;
+  border: 1px solid #4f5bd5;
+  border-radius: 6px;
+  padding: 4px 14px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: inset 1px 1px 0 #4472C4, inset -1px -1px 0 #001a4d, inset 2px 2px 0 #336699, inset -2px -2px 0 #002266;
-  min-height: 24px;
+  min-height: 28px;
+  transition: background-color .12s;
 }
 
 .btn-1c-primary:hover {
-  background-color: #0044AA;
+  background-color: #4148b8;
 }
 
 .btn-1c-primary:active {
-  box-shadow: inset -1px -1px 0 #4472C4, inset 1px 1px 0 #001a4d;
-  padding: 4px 15px 2px 17px;
+  background-color: #393fa0;
 }
 
 .btn-1c-primary:disabled {
-  background-color: #808080;
+  background-color: #b9bdf0;
+  border-color: #b9bdf0;
   cursor: default;
 }
 
-/* 1C-style input field */
+/* Input field */
 .input-1c {
-  background-color: #FFFFFF;
-  border: none;
-  box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #FFFFFF, inset 2px 2px 0 #404040;
-  padding: 3px 4px;
-  font-family: Tahoma, 'Segoe UI', Arial, sans-serif;
+  background-color: #ffffff;
+  border: 1px solid #e6e7ea;
+  border-radius: 6px;
+  box-shadow: none;
+  padding: 5px 9px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
   font-size: 13px;
+  color: #1b1c20;
   outline: none;
+  transition: border-color .12s, box-shadow .12s;
 }
 
 .input-1c:focus {
-  background-color: #FFFFEE;
+  background-color: #ffffff;
+  border-color: #4f5bd5;
+  box-shadow: 0 0 0 3px rgba(79, 91, 213, .14);
 }
 
-/* 1C-style panel with etched border */
+/* Subtle inset panel */
 .panel-1c {
-  background-color: #ECE9D8;
-  box-shadow: inset 1px 1px 0 #808080, inset -1px -1px 0 #FFFFFF;
+  background-color: #fafafb;
+  border: 1px solid #e6e7ea;
+  border-radius: 6px;
+  box-shadow: none;
   padding: 4px;
 }
 
-/* 1C-style raised panel */
 .panel-1c-raised {
-  background-color: #D4D0C8;
-  box-shadow: inset 1px 1px 0 #FFFFFF, inset -1px -1px 0 #808080;
+  background-color: #ffffff;
+  border: 1px solid #e6e7ea;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
 }
 
-/* 1C-style toolbar separator */
+/* Toolbar separator */
 .toolbar-separator {
-  width: 2px;
-  height: 20px;
-  margin: 0 4px;
-  box-shadow: inset 1px 0 0 #808080, inset -1px 0 0 #FFFFFF;
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: #e6e7ea;
+  box-shadow: none;
 }
 
-/* 1C-style window title bar */
+/* Window title bar — компактный нейтральный хедер */
 .titlebar-1c {
-  background: linear-gradient(to right, #003399, #4472C4);
-  color: #FFFFFF;
-  font-weight: bold;
+  background: #fafafb;
+  color: #1b1c20;
+  font-weight: 600;
   font-size: 12px;
-  padding: 3px 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #e6e7ea;
   user-select: none;
 }
 
-/* Scrollbar styling for 1C look */
+/* Thin neutral scrollbars */
 ::-webkit-scrollbar {
-  width: 16px;
-  height: 16px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #D4D0C8;
-  box-shadow: inset 1px 1px 0 #808080;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #D4D0C8;
-  box-shadow: inset 1px 1px 0 #FFFFFF, inset -1px -1px 0 #808080, inset 2px 2px 0 #D4D0C8, inset -2px -2px 0 #404040;
+  background: #d7d9de;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
 }
 
-::-webkit-scrollbar-button {
-  background: #D4D0C8;
-  box-shadow: inset 1px 1px 0 #FFFFFF, inset -1px -1px 0 #808080;
-  display: block;
-  height: 16px;
-  width: 16px;
+::-webkit-scrollbar-thumb:hover {
+  background: #b0b4bc;
+  background-clip: content-box;
 }
