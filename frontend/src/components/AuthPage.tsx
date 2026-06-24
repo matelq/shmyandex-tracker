@@ -1,29 +1,29 @@
-import { FormEvent, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { FormEvent, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 
-type Mode = 'login' | 'register';
+type Mode = "login" | "register";
 
 export default function AuthPage() {
   const { login, register } = useAuth();
-  const [mode, setMode] = useState<Mode>('login');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [mode, setMode] = useState<Mode>("login");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setError("");
     setBusy(true);
     try {
-      if (mode === 'login') {
+      if (mode === "login") {
         await login(email, password);
       } else {
         await register(email, name, password);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка');
+      setError(err instanceof Error ? err.message : "Ошибка");
     } finally {
       setBusy(false);
     }
@@ -36,7 +36,11 @@ export default function AuthPage() {
         {/* Title bar */}
         <div className="titlebar-1c flex items-center gap-2">
           <span className="text-sm">&#128274;</span>
-          <span>{mode === 'login' ? '1С:Предприятие — Авторизация' : '1С:Предприятие — Регистрация'}</span>
+          <span>
+            {mode === "login"
+              ? "Шмяндекс трекер — Авторизация"
+              : "Шмяндекс трекер — Регистрация"}
+          </span>
         </div>
 
         {/* Form body */}
@@ -44,9 +48,11 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit}>
             <table className="w-full text-1c-base">
               <tbody>
-                {mode === 'register' && (
+                {mode === "register" && (
                   <tr>
-                    <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">Имя:</td>
+                    <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">
+                      Имя:
+                    </td>
                     <td className="py-1.5">
                       <input
                         type="text"
@@ -60,7 +66,9 @@ export default function AuthPage() {
                   </tr>
                 )}
                 <tr>
-                  <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">Пользователь:</td>
+                  <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">
+                    Пользователь:
+                  </td>
                   <td className="py-1.5">
                     <input
                       type="email"
@@ -73,7 +81,9 @@ export default function AuthPage() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">Пароль:</td>
+                  <td className="py-1.5 pr-3 text-right whitespace-nowrap text-1c-text-secondary">
+                    Пароль:
+                  </td>
                   <td className="py-1.5">
                     <input
                       type="password"
@@ -98,19 +108,21 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setMode(mode === 'login' ? 'register' : 'login');
-                  setError('');
+                  setMode(mode === "login" ? "register" : "login");
+                  setError("");
                 }}
                 className="text-1c-link text-1c-sm underline hover:no-underline cursor-pointer bg-transparent border-none"
               >
-                {mode === 'login' ? 'Регистрация нового пользователя' : 'Уже есть учётная запись'}
+                {mode === "login"
+                  ? "Регистрация нового пользователя"
+                  : "Уже есть учётная запись"}
               </button>
-              <button
-                type="submit"
-                disabled={busy}
-                className="btn-1c-primary"
-              >
-                {busy ? 'Подождите...' : mode === 'login' ? 'Войти' : 'Зарегистрировать'}
+              <button type="submit" disabled={busy} className="btn-1c-primary">
+                {busy
+                  ? "Подождите..."
+                  : mode === "login"
+                    ? "Войти"
+                    : "Зарегистрировать"}
               </button>
             </div>
           </form>
@@ -119,7 +131,7 @@ export default function AuthPage() {
         {/* Status bar */}
         <div className="bg-1c-status-bar border-t border-1c-border-light px-2 py-0.5 text-1c-xs text-1c-text-muted flex justify-between">
           <span>Информационная база: Shmyandex Tracker</span>
-          <span>{mode === 'login' ? 'Вход в систему' : 'Регистрация'}</span>
+          <span>{mode === "login" ? "Вход в систему" : "Регистрация"}</span>
         </div>
       </div>
     </div>
