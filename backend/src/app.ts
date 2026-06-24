@@ -10,6 +10,7 @@ import Database from 'better-sqlite3';
 import './types.js';
 import authRoutes from './routes/auth.js';
 import cardRoutes from './routes/cards.js';
+import statusRoutes from './routes/statuses.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +45,7 @@ export async function buildApp(
 
   await fastify.register(authRoutes, { db });
   await fastify.register(cardRoutes, { db });
+  await fastify.register(statusRoutes, { db });
 
   fastify.get('/api/health', async () => ({ status: 'ok' }));
 

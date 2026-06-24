@@ -23,6 +23,32 @@ export interface CardPayload {
   position?: number;
 }
 
+export interface CardHistoryEntry {
+  id: number;
+  action: 'created' | 'updated';
+  field: string | null;
+  oldValue: string | null;
+  newValue: string | null;
+  userName: string;
+  createdAt: string;
+}
+
+export interface CardComment {
+  id: number;
+  body: string;
+  userName: string;
+  createdAt: string;
+}
+
+export interface Status {
+  id: number;
+  key: string;
+  name: string;
+  position: number;
+  isArchive: boolean;
+  cardCount: number;
+}
+
 let token: string | null = localStorage.getItem('token');
 
 export function setToken(value: string | null): void {
@@ -77,6 +103,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   me: () => request<{ user: User }>('/api/auth/me'),
+  listUsers: () => request<User[]>('/api/users'),
 
   listCards: () => request<Card[]>('/api/cards'),
   createCard: (payload: CardPayload) =>
@@ -84,4 +111,23 @@ export const api = {
   updateCard: (id: number, payload: CardPayload) =>
     request<Card>(`/api/cards/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   deleteCard: (id: number) => request<null>(`/api/cards/${id}`, { method: 'DELETE' }),
+
+  listStatuses: () => request<Status[]>('/api/statuses'),
+  createStatus: (name: string) =>
+    request<Status>('/api/statuses', { method: 'POST', body: JSON.stringify({ name }) }),
+  updateStatus: (id: number, name: string) =>
+    request<Status>(`/api/statuses/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  deleteStatus: (id: number, reassignTo?: string) =>
+    request<null>(
+      `/api/statuses/${id}${reassignTo ? `?reassignTo=${encodeURIComponent(reassignTo)}` : ''}`,
+      { method: 'DELETE' }
+    ),
+
+  listHistory: (id: number) => request<CardHistoryEntry[]>(`/api/cards/${id}/history`),
+  listComments: (id: number) => request<CardComment[]>(`/api/cards/${id}/comments`),
+  addComment: (id: number, body: string) =>
+    request<CardComment>(`/api/cards/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
 };

@@ -69,4 +69,12 @@ export default async function authRoutes(
   fastify.get('/api/auth/me', { onRequest: [fastify.authenticate] }, async (request) => {
     return { user: request.user };
   });
+
+  // Список пользователей — для выбора ответственного в задаче.
+  fastify.get('/api/users', { onRequest: [fastify.authenticate] }, async () => {
+    const rows = db
+      .prepare('SELECT id, email, name FROM users ORDER BY name COLLATE NOCASE')
+      .all() as { id: number; email: string; name: string }[];
+    return rows;
+  });
 }

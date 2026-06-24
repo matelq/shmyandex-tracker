@@ -32,7 +32,62 @@ export function createSchema(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_cards_user ON cards(user_id);
+
+    CREATE TABLE IF NOT EXISTS card_history (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id    INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_name  TEXT NOT NULL,
+      action     TEXT NOT NULL,            -- 'created' | 'updated'
+      field      TEXT,                     -- какое поле изменилось (для 'updated')
+      old_value  TEXT,
+      new_value  TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_history_card ON card_history(card_id);
+
+    CREATE TABLE IF NOT EXISTS card_comments (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id    INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      user_name  TEXT NOT NULL,
+      body       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_comments_card ON card_comments(card_id);
+
+    CREATE TABLE IF NOT EXISTS statuses (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      key        TEXT NOT NULL UNIQUE,
+      name       TEXT NOT NULL,
+      position   INTEGER NOT NULL DEFAULT 0,
+      is_archive INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
+
+  seedStatuses(db);
+}
+
+// Спецстатус «Архив» всегда существует и неизменяем.
+export const ARCHIVE_KEY = 'archive';
+
+// Идемпотентно создаёт стартовый набор статусов, если их ещё нет.
+// Все статусы (включая изначальные) — обычные редактируемые записи,
+// кроме «Архива» (is_archive = 1).
+function seedStatuses(db: Database.Database): void {
+  const count = db.prepare('SELECT COUNT(*) AS c FROM statuses').get() as { c: number };
+  if (count.c > 0) return;
+
+  const insert = db.prepare(
+    'INSERT INTO statuses (key, name, position, is_archive) VALUES (?, ?, ?, ?)'
+  );
+  insert.run('todo', 'К выполнению', 1, 0);
+  insert.run('in_progress', 'В работе', 2, 0);
+  insert.run('done', 'Выполнено', 3, 0);
+  insert.run(ARCHIVE_KEY, 'Архив', 1000, 1);
 }
 
 export function seed(db: Database.Database): void {
